@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { 
-  TrendingUp, DollarSign, Users, CheckSquare, Check, X, 
+import {
+  TrendingUp, DollarSign, Users, CheckSquare, Check, X,
   LogOut, PlusCircle, Settings, FileText, Menu, ChevronRight, Award, Edit2,
   ArrowLeft, Eye, Tag, Trash2, MapPin
 } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import { Line, Doughnut } from 'react-chartjs-2';
 
 ChartJS.register(
-  CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, 
+  CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement,
   Title, Tooltip, Legend, Filler
 );
 
@@ -18,7 +18,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   const [sidebarActive, setSidebarActive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
-  
+
   // Database States
   const [sales, setSales] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -32,7 +32,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   const [submittingSubProduct, setSubmittingSubProduct] = useState(false);
   const [newLocationName, setNewLocationName] = useState('');
   const [submittingLocation, setSubmittingLocation] = useState(false);
-  
+
   // Form States
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
@@ -40,7 +40,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   const [newUserRole, setNewUserRole] = useState('employee');
   const [newUserTarget, setNewUserTarget] = useState('5000');
   const [submittingUser, setSubmittingUser] = useState(false);
-  
+
   // Target Modifying States
   const [editingTargetId, setEditingTargetId] = useState(null);
   const [editingTargetValue, setEditingTargetValue] = useState('');
@@ -107,7 +107,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
 
   useEffect(() => {
     fetchData();
-    
+
     // Set up Real-Time DB Subscriptions for Sales, Brands, Sub-products, and Locations updates
     const salesChannel = supabase
       .channel('admin-sales-changes')
@@ -137,7 +137,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
         .from('sales')
         .update({ status: 'approved', approved_by: user.id })
         .eq('id', saleId);
-      
+
       if (error) throw error;
       showToast('Sale approved successfully.', 'success');
       fetchData();
@@ -152,7 +152,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
         .from('sales')
         .update({ status: 'rejected', approved_by: user.id })
         .eq('id', saleId);
-      
+
       if (error) throw error;
       showToast('Sale rejected.', 'warning');
       fetchData();
@@ -247,15 +247,15 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
         ]);
 
       if (insertError) throw insertError;
-      
+
       showToast(`Account created successfully for ${newUserFullName}.`, 'success');
-      
+
       // Reset forms
       setNewUserEmail('');
       setNewUserPassword('');
       setNewUserFullName('');
       setNewUserTarget('5000');
-      
+
       fetchData();
     } catch (err) {
       showToast(err.message || 'Failed to register account.', 'danger');
@@ -403,10 +403,10 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   // --- ANALYTICS CALCULATIONS ---
   const approvedSales = sales.filter(s => s.status === 'approved');
   const pendingSales = sales.filter(s => s.status === 'pending');
-  
+
   const totalRevenue = approvedSales.reduce((acc, curr) => acc + parseFloat(curr.total_amount || 0), 0);
   const averageSale = approvedSales.length > 0 ? totalRevenue / approvedSales.length : 0;
-  
+
   // Calculate employee sales aggregations
   const employeePerformance = profiles
     .filter(p => p.role === 'employee')
@@ -449,7 +449,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
       const [, m, d] = dateStr.split('-');
       return `${m}/${d}`;
     });
-    
+
     return {
       labels,
       datasets: [
@@ -479,7 +479,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
     });
 
     const sortedProducts = Object.entries(productMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    
+
     return {
       labels: sortedProducts.map(p => p[0]),
       datasets: [
@@ -624,8 +624,8 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
               <div>
                 {/* Back Button */}
                 <div style={{ marginBottom: '24px' }}>
-                  <button 
-                    className="btn-secondary" 
+                  <button
+                    className="btn-secondary"
                     onClick={() => setSelectedEmployeeId(null)}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
                   >
@@ -652,13 +652,13 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                       <span className={`badge ${empProfile.role}`} style={{ alignSelf: 'center', padding: '6px 12px' }}>
                         {empProfile.role}
                       </span>
-                      <button 
+                      <button
                         className="btn-secondary"
                         onClick={() => handleToggleRole(empProfile)}
                       >
                         Set as {empProfile.role === 'admin' ? 'Employee' : 'Admin'}
                       </button>
-                      <button 
+                      <button
                         className="btn-secondary"
                         onClick={() => {
                           setEditingTargetId(empProfile.id);
@@ -671,7 +671,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                       </button>
                     </div>
                   </div>
-                  
+
                   <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '20px', paddingTop: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                     <div>
                       <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Operator ID</span>
@@ -758,11 +758,11 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                           </span>
                         </div>
                         <div style={{ height: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
-                          <div 
-                            style={{ 
-                              height: '100%', 
-                              width: `${Math.min(100, empTargetPercent)}%`, 
-                              background: 'linear-gradient(90deg, var(--accent-purple), var(--accent-pink))', 
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${Math.min(100, empTargetPercent)}%`,
+                              background: 'linear-gradient(90deg, var(--accent-purple), var(--accent-pink))',
                               borderRadius: '6px'
                             }}
                           ></div>
@@ -778,12 +778,12 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                   </div>
                 )}
 
-                 {/* Sales Log History Table */}
+                {/* Sales Log History Table */}
                 <div className="table-card glass-panel">
                   <div className="table-header">
                     <h3 className="chart-title">Sales Activity Logs</h3>
                   </div>
-                  
+
                   <div className="table-container">
                     <table>
                       <thead>
@@ -828,14 +828,14 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                             <td>
                               {sale.status === 'pending' ? (
                                 <div className="btn-action-group">
-                                  <button 
+                                  <button
                                     className="btn-action approve"
                                     onClick={() => handleApprove(sale.id)}
                                     title="Approve Sale"
                                   >
                                     <Check size={18} />
                                   </button>
-                                  <button 
+                                  <button
                                     className="btn-action reject"
                                     onClick={() => handleReject(sale.id)}
                                     title="Reject Sale"
@@ -932,13 +932,13 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                     <div className="chart-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {approvedSales.length > 0 ? (
                         <div style={{ height: '220px', width: '220px' }}>
-                          <Doughnut 
-                            data={getProductData()} 
+                          <Doughnut
+                            data={getProductData()}
                             options={{
                               responsive: true,
                               maintainAspectRatio: false,
                               plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { family: 'Outfit', size: 10 } } } }
-                            }} 
+                            }}
                           />
                         </div>
                       ) : (
@@ -973,7 +973,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                         {employeePerformance.map((emp) => (
                           <tr key={emp.id}>
                             <td>
-                              <button 
+                              <button
                                 onClick={() => setSelectedEmployeeId(emp.id)}
                                 style={{
                                   background: 'transparent',
@@ -1045,7 +1045,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                           <th>Representative</th>
                           <th>Product</th>
                           <th>Qty</th>
-                          <th>Unit Price</th>
+                          {/*<th>Unit Price</th>*/}
                           <th>Total Amount</th>
                           <th>Customer</th>
                           <th>Location</th>
@@ -1060,7 +1060,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                             <td>{sale.profiles?.full_name || 'Unknown'}</td>
                             <td style={{ fontWeight: '500' }}>{sale.product_name}</td>
                             <td>{sale.quantity}</td>
-                            <td>${parseFloat(sale.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            {/*<td>${parseFloat(sale.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>*/}
                             <td style={{ fontWeight: '600', color: 'white' }}>
                               ${parseFloat(sale.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </td>
@@ -1076,14 +1076,14 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                             <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{sale.notes || '-'}</td>
                             <td>
                               <div className="btn-action-group">
-                                <button 
+                                <button
                                   className="btn-action approve"
                                   onClick={() => handleApprove(sale.id)}
                                   title="Approve Sale"
                                 >
                                   <Check size={18} />
                                 </button>
-                                <button 
+                                <button
                                   className="btn-action reject"
                                   onClick={() => handleReject(sale.id)}
                                   title="Reject Sale"
@@ -1153,15 +1153,15 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                             <td>
                               {editingTargetId === profile.id ? (
                                 <div style={{ display: 'flex', gap: '8px' }}>
-                                  <button 
-                                    className="btn-secondary" 
+                                  <button
+                                    className="btn-secondary"
                                     style={{ padding: '6px 12px' }}
                                     onClick={() => handleSaveTarget(profile.id)}
                                   >
                                     Save
                                   </button>
-                                  <button 
-                                    className="btn-secondary" 
+                                  <button
+                                    className="btn-secondary"
                                     style={{ padding: '6px 12px', background: 'transparent', border: 'none' }}
                                     onClick={() => setEditingTargetId(null)}
                                   >
@@ -1169,7 +1169,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                                   </button>
                                 </div>
                               ) : (
-                                <button 
+                                <button
                                   className="btn-secondary"
                                   style={{ padding: '6px 12px', display: 'inline-flex', gap: '6px' }}
                                   onClick={() => {
@@ -1375,15 +1375,15 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
             {/* Brand/Inventory Manager tab */}
             {activeTab === 'brands' && (
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', alignItems: 'start' }}>
-                
+
                 {/* COLUMN 1: Brands & Sub-products */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  
+
                   {/* BRANDS PANEL */}
                   <div className="glass-panel" style={{ padding: '24px' }}>
                     <h2 className="chart-title" style={{ fontSize: '1.4rem', marginBottom: '4px' }}>Brand Registry</h2>
                     <p className="dashboard-subtitle" style={{ fontSize: '0.85rem', marginBottom: '16px' }}>Add and manage primary product brand names.</p>
-                    
+
                     <form onSubmit={handleAddBrand} style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
                       <input
                         type="text"

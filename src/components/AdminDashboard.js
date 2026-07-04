@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { 
   TrendingUp, DollarSign, Users, CheckSquare, Check, X, 
   LogOut, PlusCircle, Settings, FileText, Menu, ChevronRight, Award, Edit2,
-  ArrowLeft, Eye, Tag, Trash2
+  ArrowLeft, Eye, Tag, Trash2, MapPin
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
@@ -25,6 +25,13 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   const [brands, setBrands] = useState([]);
   const [newBrandName, setNewBrandName] = useState('');
   const [submittingBrand, setSubmittingBrand] = useState(false);
+  const [subProducts, setSubProducts] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [newSubProductName, setNewSubProductName] = useState('');
+  const [subProductBrandId, setSubProductBrandId] = useState('');
+  const [submittingSubProduct, setSubmittingSubProduct] = useState(false);
+  const [newLocationName, setNewLocationName] = useState('');
+  const [submittingLocation, setSubmittingLocation] = useState(false);
   
   // Form States
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -70,6 +77,26 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
         throw brandErr;
       }
       setBrands(brandData || []);
+
+      // 4. Fetch Sub-Products
+      const { data: subProductData, error: subProductErr } = await supabase
+        .from('sub_products')
+        .select('*')
+        .order('name', { ascending: true });
+      if (subProductErr && subProductErr.code !== 'PGRST116' && !subProductErr.message.includes('relation "public.sub_products" does not exist')) {
+        throw subProductErr;
+      }
+      setSubProducts(subProductData || []);
+
+      // 5. Fetch Locations
+      const { data: locationData, error: locationErr } = await supabase
+        .from('locations')
+        .select('*')
+        .order('name', { ascending: true });
+      if (locationErr && locationErr.code !== 'PGRST116' && !locationErr.message.includes('relation "public.locations" does not exist')) {
+        throw locationErr;
+      }
+      setLocations(locationData || []);
     } catch (err) {
       console.error('Error fetching admin dashboard data:', err);
       showToast('Error loading database tables.', 'danger');
@@ -81,13 +108,19 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   useEffect(() => {
     fetchData();
     
-    // Set up Real-Time DB Subscriptions for Sales and Brands updates
+    // Set up Real-Time DB Subscriptions for Sales, Brands, Sub-products, and Locations updates
     const salesChannel = supabase
       .channel('admin-sales-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'brands' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sub_products' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, () => {
         fetchData();
       })
       .subscribe();
@@ -107,6 +140,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
       
       if (error) throw error;
       showToast('Sale approved successfully.', 'success');
+      fetchData();
     } catch (err) {
       showToast(err.message || 'Error approving sale.', 'danger');
     }
@@ -121,6 +155,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
       
       if (error) throw error;
       showToast('Sale rejected.', 'warning');
+      fetchData();
     } catch (err) {
       showToast(err.message || 'Error rejecting sale.', 'danger');
     }
@@ -270,6 +305,98 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
       fetchData();
     } catch (err) {
       showToast(err.message || 'Error deleting brand.', 'danger');
+    }
+  };
+
+  // Handle Add Sub-Product
+  const handleAddSubProduct = async (e) => {
+    e.preventDefault();
+    if (submittingSubProduct) return;
+    if (!subProductBrandId) {
+      showToast('Please select a Brand.', 'warning');
+      return;
+    }
+    if (!newSubProductName.trim()) {
+      showToast('Sub-product name cannot be empty.', 'warning');
+      return;
+    }
+    setSubmittingSubProduct(true);
+    try {
+      const { error } = await supabase
+        .from('sub_products')
+        .insert([{ brand_id: subProductBrandId, name: newSubProductName.trim() }]);
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('This sub-product name already exists for this brand.');
+        }
+        throw error;
+      }
+      showToast('Sub-product added successfully.', 'success');
+      setNewSubProductName('');
+      fetchData();
+    } catch (err) {
+      showToast(err.message || 'Error adding sub-product.', 'danger');
+    } finally {
+      setSubmittingSubProduct(false);
+    }
+  };
+
+  // Handle Delete Sub-Product
+  const handleDeleteSubProduct = async (subProductId) => {
+    try {
+      const { error } = await supabase
+        .from('sub_products')
+        .delete()
+        .eq('id', subProductId);
+      if (error) throw error;
+      showToast('Sub-product deleted successfully.', 'warning');
+      fetchData();
+    } catch (err) {
+      showToast(err.message || 'Error deleting sub-product.', 'danger');
+    }
+  };
+
+  // Handle Add Location
+  const handleAddLocation = async (e) => {
+    e.preventDefault();
+    if (submittingLocation) return;
+    if (!newLocationName.trim()) {
+      showToast('Location name cannot be empty.', 'warning');
+      return;
+    }
+    setSubmittingLocation(true);
+    try {
+      const { error } = await supabase
+        .from('locations')
+        .insert([{ name: newLocationName.trim() }]);
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('A location with this name already exists.');
+        }
+        throw error;
+      }
+      showToast('Location registered successfully.', 'success');
+      setNewLocationName('');
+      fetchData();
+    } catch (err) {
+      showToast(err.message || 'Error adding location.', 'danger');
+    } finally {
+      setSubmittingLocation(false);
+    }
+  };
+
+  // Handle Delete Location
+  const handleDeleteLocation = async (locationId) => {
+    try {
+      const { error } = await supabase
+        .from('locations')
+        .delete()
+        .eq('id', locationId);
+      if (error) throw error;
+      showToast('Location deleted successfully.', 'warning');
+      fetchData();
+    } catch (err) {
+      showToast(err.message || 'Error deleting location.', 'danger');
     }
   };
 
@@ -651,7 +778,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                   </div>
                 )}
 
-                {/* Sales Log History Table */}
+                 {/* Sales Log History Table */}
                 <div className="table-card glass-panel">
                   <div className="table-header">
                     <h3 className="chart-title">Sales Activity Logs</h3>
@@ -667,6 +794,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                           <th>Unit Price</th>
                           <th>Total Amount</th>
                           <th>Customer</th>
+                          <th>Location</th>
                           <th>Notes</th>
                           <th>Status</th>
                           <th>Action</th>
@@ -683,6 +811,14 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                               ${parseFloat(sale.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </td>
                             <td>{sale.customer_name}</td>
+                            <td style={{ fontWeight: '500', color: 'var(--text-primary)' }}>
+                              {sale.location ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <MapPin size={12} style={{ color: 'var(--accent-purple)' }} />
+                                  <span>{sale.location}</span>
+                                </span>
+                              ) : '-'}
+                            </td>
                             <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{sale.notes || '-'}</td>
                             <td>
                               <span className={`badge ${sale.status}`}>
@@ -715,7 +851,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                         ))}
                         {empSales.length === 0 && (
                           <tr>
-                            <td colSpan="9" style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
+                            <td colSpan="10" style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
                               No sales records found for this representative.
                             </td>
                           </tr>
@@ -912,6 +1048,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                           <th>Unit Price</th>
                           <th>Total Amount</th>
                           <th>Customer</th>
+                          <th>Location</th>
                           <th>Notes</th>
                           <th>Action</th>
                         </tr>
@@ -928,6 +1065,14 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                               ${parseFloat(sale.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </td>
                             <td>{sale.customer_name}</td>
+                            <td style={{ fontWeight: '500', color: 'var(--text-primary)' }}>
+                              {sale.location ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <MapPin size={12} style={{ color: 'var(--accent-purple)' }} />
+                                  <span>{sale.location}</span>
+                                </span>
+                              ) : '-'}
+                            </td>
                             <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{sale.notes || '-'}</td>
                             <td>
                               <div className="btn-action-group">
@@ -951,7 +1096,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                         ))}
                         {pendingSales.length === 0 && (
                           <tr>
-                            <td colSpan="9" style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
+                            <td colSpan="10" style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
                               <div className="empty-state">
                                 <CheckSquare className="empty-state-icon" style={{ color: 'var(--success)' }} />
                                 <p className="empty-state-text">Queue is clear!</p>
@@ -1227,88 +1372,198 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
               </div>
             )}
 
-            {/* Brand Manager tab */}
+            {/* Brand/Inventory Manager tab */}
             {activeTab === 'brands' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '24px', alignItems: 'start' }}>
-                <div>
-                  <h1 className="dashboard-title">Brand Registry</h1>
-                  <p className="dashboard-subtitle">Manage official product brands select-list available for representative logs.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', alignItems: 'start' }}>
+                
+                {/* COLUMN 1: Brands & Sub-products */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  
+                  {/* BRANDS PANEL */}
+                  <div className="glass-panel" style={{ padding: '24px' }}>
+                    <h2 className="chart-title" style={{ fontSize: '1.4rem', marginBottom: '4px' }}>Brand Registry</h2>
+                    <p className="dashboard-subtitle" style={{ fontSize: '0.85rem', marginBottom: '16px' }}>Add and manage primary product brand names.</p>
+                    
+                    <form onSubmit={handleAddBrand} style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="New Brand (e.g. AuraCloud SaaS)"
+                        value={newBrandName}
+                        onChange={(e) => setNewBrandName(e.target.value)}
+                        required
+                        style={{ padding: '8px 12px' }}
+                      />
+                      <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '0 16px', whiteSpace: 'nowrap' }} disabled={submittingBrand}>
+                        {submittingBrand ? <span className="loader" style={{ width: '16px', height: '16px' }}></span> : 'Add'}
+                      </button>
+                    </form>
 
-                  <div className="table-card glass-panel">
-                    <div className="table-container">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Brand Name</th>
-                            <th>Registered At</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                      <table style={{ fontSize: '0.85rem' }}>
                         <tbody>
                           {brands.map((brand) => (
                             <tr key={brand.id}>
-                              <td style={{ fontWeight: '500' }}>{brand.name}</td>
-                              <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                                {new Date(brand.created_at).toLocaleDateString()}
-                              </td>
-                              <td>
+                              <td style={{ fontWeight: '500', padding: '8px 12px' }}>{brand.name}</td>
+                              <td style={{ textAlign: 'right', padding: '8px 12px' }}>
                                 <button
                                   className="btn-logout"
-                                  style={{ padding: '6px' }}
+                                  style={{ padding: '4px' }}
                                   onClick={() => handleDeleteBrand(brand.id)}
                                   title="Delete Brand"
                                 >
-                                  <Trash2 size={16} />
+                                  <Trash2 size={14} />
                                 </button>
                               </td>
                             </tr>
                           ))}
                           {brands.length === 0 && (
                             <tr>
-                              <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
-                                No brands registered yet. Add one on the right.
-                              </td>
+                              <td colSpan="2" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '12px' }}>No brands registered.</td>
                             </tr>
                           )}
                         </tbody>
                       </table>
                     </div>
                   </div>
-                </div>
 
-                {/* Add Brand Form Card */}
-                <div>
-                  <h2 className="dashboard-title" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Register New Brand</h2>
-                  <p className="dashboard-subtitle" style={{ marginBottom: '24px' }}>Add a brand to populate the dropdown select-list for logs.</p>
-
+                  {/* SUB-PRODUCTS PANEL */}
                   <div className="glass-panel" style={{ padding: '24px' }}>
-                    <form onSubmit={handleAddBrand}>
-                      <div className="form-group">
-                        <label htmlFor="newBrandName">Brand Name</label>
+                    <h2 className="chart-title" style={{ fontSize: '1.4rem', marginBottom: '4px' }}>Brand Sub-Products</h2>
+                    <p className="dashboard-subtitle" style={{ fontSize: '0.85rem', marginBottom: '16px' }}>Register optional sub-products or services under a specific brand.</p>
+
+                    <form onSubmit={handleAddSubProduct} style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <select
+                          className="form-input"
+                          value={subProductBrandId}
+                          onChange={(e) => setSubProductBrandId(e.target.value)}
+                          required
+                          style={{ padding: '8px 12px' }}
+                        >
+                          <option value="" disabled>-- Select Brand --</option>
+                          {brands.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
                         <input
-                          id="newBrandName"
                           type="text"
                           className="form-input"
-                          placeholder="e.g. AuraCloud SaaS"
-                          value={newBrandName}
-                          onChange={(e) => setNewBrandName(e.target.value)}
+                          placeholder="Sub-Product (e.g. Starter Plan)"
+                          value={newSubProductName}
+                          onChange={(e) => setNewSubProductName(e.target.value)}
                           required
+                          style={{ padding: '8px 12px' }}
                         />
                       </div>
-
-                      <button type="submit" className="btn-primary" style={{ marginTop: '10px' }} disabled={submittingBrand}>
-                        {submittingBrand ? (
-                          <span className="loader"></span>
-                        ) : (
+                      <button type="submit" className="btn-primary" style={{ marginTop: '4px' }} disabled={submittingSubProduct}>
+                        {submittingSubProduct ? <span className="loader" style={{ width: '16px', height: '16px' }}></span> : (
                           <>
-                            <PlusCircle size={18} />
-                            <span>Add Brand</span>
+                            <PlusCircle size={16} />
+                            <span>Add Sub-Product</span>
                           </>
                         )}
                       </button>
                     </form>
+
+                    <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                      <table style={{ fontSize: '0.85rem' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ padding: '8px 12px', fontSize: '0.75rem' }}>Brand</th>
+                            <th style={{ padding: '8px 12px', fontSize: '0.75rem' }}>Sub-Product</th>
+                            <th style={{ padding: '8px 12px', fontSize: '0.75rem', textAlign: 'right' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {subProducts.map((sp) => {
+                            const parentBrand = brands.find(b => b.id === sp.brand_id);
+                            return (
+                              <tr key={sp.id}>
+                                <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{parentBrand ? parentBrand.name : 'Unknown'}</td>
+                                <td style={{ fontWeight: '500', padding: '8px 12px' }}>{sp.name}</td>
+                                <td style={{ textAlign: 'right', padding: '8px 12px' }}>
+                                  <button
+                                    className="btn-logout"
+                                    style={{ padding: '4px' }}
+                                    onClick={() => handleDeleteSubProduct(sp.id)}
+                                    title="Delete Sub-Product"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {subProducts.length === 0 && (
+                            <tr>
+                              <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '12px' }}>No sub-products registered.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* COLUMN 2: Locations */}
+                <div className="glass-panel" style={{ padding: '24px' }}>
+                  <h2 className="chart-title" style={{ fontSize: '1.4rem', marginBottom: '4px' }}>Sale Locations</h2>
+                  <p className="dashboard-subtitle" style={{ fontSize: '0.85rem', marginBottom: '16px' }}>Manage retail branches or channels where sales occur.</p>
+
+                  <form onSubmit={handleAddLocation} style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="New Location (e.g. New York Office)"
+                      value={newLocationName}
+                      onChange={(e) => setNewLocationName(e.target.value)}
+                      required
+                      style={{ padding: '8px 12px' }}
+                    />
+                    <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '0 16px', whiteSpace: 'nowrap' }} disabled={submittingLocation}>
+                      {submittingLocation ? <span className="loader" style={{ width: '16px', height: '16px' }}></span> : 'Add'}
+                    </button>
+                  </form>
+
+                  <div style={{ maxHeight: '420px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                    <table style={{ fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ padding: '8px 12px', fontSize: '0.75rem' }}>Location Name</th>
+                          <th style={{ padding: '8px 12px', fontSize: '0.75rem', textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {locations.map((loc) => (
+                          <tr key={loc.id}>
+                            <td style={{ fontWeight: '500', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <MapPin size={14} style={{ color: 'var(--accent-purple)' }} />
+                              <span>{loc.name}</span>
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '8px 12px' }}>
+                              <button
+                                className="btn-logout"
+                                style={{ padding: '4px' }}
+                                onClick={() => handleDeleteLocation(loc.id)}
+                                title="Delete Location"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {locations.length === 0 && (
+                          <tr>
+                            <td colSpan="2" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '12px' }}>No locations registered.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
+
               </div>
             )}
           </>

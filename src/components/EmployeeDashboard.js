@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { 
-  TrendingUp, DollarSign, Award, LogOut, PlusCircle, 
+import {
+  TrendingUp, DollarSign, Award, LogOut, PlusCircle,
   FileText, Menu, Clock, CheckCircle, XCircle, Trash2
 } from 'lucide-react';
 
@@ -9,16 +9,22 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarActive, setSidebarActive] = useState(false);
   const [loading, setLoading] = useState(true);
-  
+
   // Database States
   const [sales, setSales] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [profile, setProfile] = useState(null);
   const [brands, setBrands] = useState([]);
-  
+  const [subProducts, setSubProducts] = useState([]);
+  const [locations, setLocations] = useState([]);
+
   // Form States
   const [productName, setProductName] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('');
+  const [selectedSubProduct, setSelectedSubProduct] = useState('');
+  const [customSubProduct, setCustomSubProduct] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [customLocation, setCustomLocation] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [unitPrice, setUnitPrice] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -65,6 +71,26 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
       }
       setBrands(brandData || []);
 
+      // 4b. Fetch Sub-Products
+      const { data: subProductData, error: subProductErr } = await supabase
+        .from('sub_products')
+        .select('*')
+        .order('name', { ascending: true });
+      if (subProductErr && subProductErr.code !== 'PGRST116' && !subProductErr.message.includes('relation "public.sub_products" does not exist')) {
+        throw subProductErr;
+      }
+      setSubProducts(subProductData || []);
+
+      // 4c. Fetch Locations
+      const { data: locationData, error: locationErr } = await supabase
+        .from('locations')
+        .select('*')
+        .order('name', { ascending: true });
+      if (locationErr && locationErr.code !== 'PGRST116' && !locationErr.message.includes('relation "public.locations" does not exist')) {
+        throw locationErr;
+      }
+      setLocations(locationData || []);
+
       // 5. Fetch All Approved Sales for Leaderboard calculation
       // (Even though employees can't edit other sales, their RLS policy allows reading approved or their own sales)
       const { data: approvedSales, error: appSalesErr } = await supabase
@@ -72,7 +98,7 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
         .select('*')
         .eq('status', 'approved');
       if (appSalesErr) throw appSalesErr;
-      
+
       // Update local cache of sales including other users' approved sales if available
       // Actually, we'll store this approved list inside our leaderboard calculation.
       return approvedSales || [];
@@ -91,7 +117,7 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
     };
     init();
 
-    // Set up Real-Time DB Subscriptions for Sales and Brands updates (e.g. when admin approves)
+    // Set up Real-Time DB Subscriptions for Sales, Brands, Sub-products, and Locations updates (e.g. when admin approves)
     const salesChannel = supabase
       .channel('employee-sales-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
@@ -101,6 +127,12 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'brands' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sub_products' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, () => {
         fetchData();
       })
       .subscribe();
@@ -115,17 +147,58 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
     e.preventDefault();
     if (submittingSale) return;
 
-    const qty = parseInt(quantity);
-    const price = parseFloat(unitPrice);
+    // 1. Determine Brand
+    let brandVal = '';
+    if (selectedBrand === 'Other') {
+      brandVal = productName.trim();
+    } else {
+      brandVal = selectedBrand;
+    }
 
-    if (!productName || !customerName || isNaN(qty) || isNaN(price) || qty <= 0 || price < 0) {
+    if (!brandVal) {
+      showToast('Please select or specify a brand.', 'warning');
+      return;
+    }
+
+    // 2. Determine Sub-Product (Optional)
+    let subProductVal = null;
+    if (selectedSubProduct === 'Other') {
+      if (customSubProduct.trim()) {
+        subProductVal = customSubProduct.trim();
+      }
+    } else if (selectedSubProduct && selectedSubProduct !== '') {
+      subProductVal = selectedSubProduct;
+    }
+
+    // 3. Determine Location
+    let locationVal = '';
+    if (selectedLocation === 'Other') {
+      locationVal = customLocation.trim();
+    } else {
+      locationVal = selectedLocation;
+    }
+
+    if (!locationVal) {
+      showToast('Please select or specify a location.', 'warning');
+      return;
+    }
+
+    // 4. Determine combined product_name
+    const finalProductName = subProductVal
+      ? `${brandVal} - ${subProductVal}`
+      : brandVal;
+
+    const qty = parseInt(quantity);
+    const total = parseFloat(unitPrice);
+    const customer = customerName.trim();
+
+    if (isNaN(qty) || isNaN(total) || qty <= 0 || total < 0) {
       showToast('Please check form fields for accuracy.', 'warning');
       return;
     }
 
     setSubmittingSale(true);
-
-    const total = qty * price;
+    const unitPriceVal = total / qty;
 
     try {
       const { error } = await supabase
@@ -133,30 +206,37 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
         .insert([
           {
             employee_id: user.id,
-            product_name: productName,
+            product_name: finalProductName,
+            brand_name: brandVal,
+            sub_product_name: subProductVal,
+            location: locationVal,
             quantity: qty,
-            unit_price: price,
+            unit_price: unitPriceVal,
             total_amount: total,
             sale_date: saleDate,
-            customer_name: customerName,
+            customer_name: customer || null,
             notes: notes,
-            status: 'pending' // default
+            status: 'pending'
           }
         ]);
 
       if (error) throw error;
 
       showToast('Sale logged successfully! Awaiting Admin approval.', 'success');
-      
+
       // Reset form
       setProductName('');
       setSelectedBrand('');
+      setSelectedSubProduct('');
+      setCustomSubProduct('');
+      setSelectedLocation('');
+      setCustomLocation('');
       setQuantity('1');
       setUnitPrice('');
       setCustomerName('');
       setNotes('');
       setSaleDate(new Date().toISOString().split('T')[0]);
-      
+
       fetchData();
     } catch (err) {
       showToast(err.message || 'Error logging sale.', 'danger');
@@ -185,7 +265,7 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
   // --- CALCULATE PERSONAL STATS ---
   const myApprovedSales = sales.filter(s => s.status === 'approved');
   const myPendingSales = sales.filter(s => s.status === 'pending');
-  
+
   const totalMyRevenue = myApprovedSales.reduce((sum, s) => sum + parseFloat(s.total_amount || 0), 0);
   const totalMySalesCount = myApprovedSales.length;
 
@@ -213,7 +293,7 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
           .from('sales')
           .select('employee_id, total_amount')
           .eq('status', 'approved');
-        
+
         if (error) throw error;
 
         const salesMap = {};
@@ -359,10 +439,10 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                             </linearGradient>
                           </defs>
                           <circle className="gauge-track" cx="80" cy="80" r={radius} />
-                          <circle 
-                            className="gauge-fill" 
-                            cx="80" 
-                            cy="80" 
+                          <circle
+                            className="gauge-fill"
+                            cx="80"
+                            cy="80"
                             r={radius}
                             style={{ strokeDashoffset }}
                           />
@@ -417,6 +497,8 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                           onChange={(e) => {
                             const val = e.target.value;
                             setSelectedBrand(val);
+                            setSelectedSubProduct('');
+                            setCustomSubProduct('');
                             if (val !== 'Other') {
                               setProductName(val);
                             } else {
@@ -435,14 +517,114 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
 
                       {selectedBrand === 'Other' && (
                         <div className="form-group" style={{ gridColumn: 'span 2', animation: 'fadeIn 0.2s ease-out' }}>
-                          <label htmlFor="productName">Specify Custom Product/Brand Name</label>
+                          <label htmlFor="productName">Specify Custom Brand Name</label>
                           <input
                             id="productName"
                             type="text"
                             className="form-input"
-                            placeholder="e.g. Custom Database Optimisation"
+                            placeholder="e.g. AuraCloud SaaS"
                             value={productName}
                             onChange={(e) => setProductName(e.target.value)}
+                            required
+                          />
+                        </div>
+                      )}
+
+                      {/* Optional Sub-Product selection */}
+                      {selectedBrand && selectedBrand !== 'Other' && (() => {
+                        const selectedBrandObj = brands.find(b => b.name === selectedBrand);
+                        const filteredSubProducts = selectedBrandObj
+                          ? subProducts.filter(sp => sp.brand_id === selectedBrandObj.id)
+                          : [];
+                        return (
+                          <div className="form-group" style={{ gridColumn: 'span 2', animation: 'fadeIn 0.2s ease-out' }}>
+                            <label htmlFor="selectedSubProduct">Choose Sub-Product (Optional)</label>
+                            <select
+                              id="selectedSubProduct"
+                              className="form-input"
+                              style={{
+                                background: 'var(--bg-input)',
+                                color: 'var(--text-primary)',
+                                border: '1px solid var(--border-color)',
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
+                                cursor: 'pointer'
+                              }}
+                              value={selectedSubProduct}
+                              onChange={(e) => {
+                                setSelectedSubProduct(e.target.value);
+                                if (e.target.value !== 'Other') {
+                                  setCustomSubProduct('');
+                                }
+                              }}
+                            >
+                              <option value="">-- None (Only Brand) --</option>
+                              {filteredSubProducts.map(sp => (
+                                <option key={sp.id} value={sp.name}>{sp.name}</option>
+                              ))}
+                              <option value="Other">Other (Specify Custom...)</option>
+                            </select>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Custom Sub-Product */}
+                      {(selectedBrand === 'Other' || selectedSubProduct === 'Other') && (
+                        <div className="form-group" style={{ gridColumn: 'span 2', animation: 'fadeIn 0.2s ease-out' }}>
+                          <label htmlFor="customSubProduct">Specify Sub-Product Name (Optional)</label>
+                          <input
+                            id="customSubProduct"
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. Starter Pack Plan"
+                            value={customSubProduct}
+                            onChange={(e) => setCustomSubProduct(e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      {/* Location Selection */}
+                      <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                        <label htmlFor="selectedLocation">Choose Sale Location</label>
+                        <select
+                          id="selectedLocation"
+                          className="form-input"
+                          style={{
+                            background: 'var(--bg-input)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border-color)',
+                            appearance: 'none',
+                            WebkitAppearance: 'none',
+                            cursor: 'pointer'
+                          }}
+                          value={selectedLocation}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedLocation(val);
+                            if (val !== 'Other') {
+                              setCustomLocation('');
+                            }
+                          }}
+                          required
+                        >
+                          <option value="" disabled>-- Select Location --</option>
+                          {locations.map(loc => (
+                            <option key={loc.id} value={loc.name}>{loc.name}</option>
+                          ))}
+                          <option value="Other">Other (Specify Custom...)</option>
+                        </select>
+                      </div>
+
+                      {selectedLocation === 'Other' && (
+                        <div className="form-group" style={{ gridColumn: 'span 2', animation: 'fadeIn 0.2s ease-out' }}>
+                          <label htmlFor="customLocation">Specify Custom Location</label>
+                          <input
+                            id="customLocation"
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. Munich Retail Center"
+                            value={customLocation}
+                            onChange={(e) => setCustomLocation(e.target.value)}
                             required
                           />
                         </div>
@@ -462,7 +644,7 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                       </div>
 
                       <div className="form-group">
-                        <label htmlFor="unitPrice">Unit Price ($)</label>
+                        <label htmlFor="unitPrice">Total Price ($)</label>
                         <input
                           id="unitPrice"
                           type="number"
@@ -477,15 +659,14 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                       </div>
 
                       <div className="form-group">
-                        <label htmlFor="customerName">Customer/Company Name</label>
+                        <label htmlFor="customerName">Customer/Company Name (Optional)</label>
                         <input
                           id="customerName"
                           type="text"
                           className="form-input"
-                          placeholder="Acme Corp"
+                          placeholder="Acme Corp (Optional)"
                           value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
-                          required
                         />
                       </div>
 
@@ -515,9 +696,9 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
 
                       <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
                         <div>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Calculated Total Value: </span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Sale Value: </span>
                           <span style={{ fontWeight: '700', fontSize: '1.25rem', color: 'var(--success)' }}>
-                            ${((parseInt(quantity) || 0) * (parseFloat(unitPrice) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ${(parseFloat(unitPrice) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                         <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '10px 24px' }} disabled={submittingSale}>
@@ -551,9 +732,10 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                           <th>Sale Date</th>
                           <th>Product/Service</th>
                           <th>Qty</th>
-                          <th>Price ($)</th>
+                          {/*<th>Price ($)</th>*/}
                           <th>Total Amount</th>
                           <th>Customer</th>
+                          <th>Location</th>
                           <th>Notes</th>
                           <th>Approval Status</th>
                           <th>Action</th>
@@ -565,11 +747,14 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                             <td>{sale.sale_date}</td>
                             <td style={{ fontWeight: '500' }}>{sale.product_name}</td>
                             <td>{sale.quantity}</td>
-                            <td>${parseFloat(sale.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            {/*<td>${parseFloat(sale.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td> */}
                             <td style={{ fontWeight: '600' }}>
                               ${parseFloat(sale.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </td>
                             <td>{sale.customer_name}</td>
+                            <td style={{ fontWeight: '500', color: 'var(--text-primary)' }}>
+                              {sale.location || '-'}
+                            </td>
                             <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{sale.notes || '-'}</td>
                             <td>
                               <span className={`badge ${sale.status}`}>
@@ -578,8 +763,8 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                             </td>
                             <td>
                               {sale.status === 'pending' ? (
-                                <button 
-                                  className="btn-logout" 
+                                <button
+                                  className="btn-logout"
                                   style={{ padding: '6px' }}
                                   onClick={() => handleDeleteSale(sale.id)}
                                   title="Delete Pending Log"
@@ -594,7 +779,7 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                         ))}
                         {sales.length === 0 && (
                           <tr>
-                            <td colSpan="9" style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
+                            <td colSpan="10" style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
                               <div className="empty-state">
                                 <FileText className="empty-state-icon" />
                                 <p className="empty-state-text">No Sales History</p>
@@ -621,8 +806,8 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
                     {leaderboard.map((item, idx) => {
                       const isMe = item.id === user.id;
                       return (
-                        <div 
-                          key={item.id} 
+                        <div
+                          key={item.id}
                           className="leaderboard-item"
                           style={isMe ? { borderColor: 'var(--accent-purple)', background: 'rgba(139, 92, 246, 0.05)' } : {}}
                         >

@@ -186,5 +186,27 @@ values
   ('Security Audit Retainer')
 on conflict (name) do nothing;
 
+-- 6. Insert Mock Sub-Products (associated with AuraCloud SaaS and Backup Storage Premium)
+insert into public.sub_products (brand_id, name)
+values
+  -- AuraCloud SaaS Sub-Products
+  ((select id from public.brands where name = 'AuraCloud SaaS' limit 1), 'Starter Plan'),
+  ((select id from public.brands where name = 'AuraCloud SaaS' limit 1), 'Professional Plan'),
+  ((select id from public.brands where name = 'AuraCloud SaaS' limit 1), 'Enterprise Suite'),
+  -- Backup Storage Premium Sub-Products
+  ((select id from public.brands where name = 'Backup Storage Premium' limit 1), '100GB Tier'),
+  ((select id from public.brands where name = 'Backup Storage Premium' limit 1), '1TB Business Tier'),
+  ((select id from public.brands where name = 'Backup Storage Premium' limit 1), 'Unlimited Enterprise Tier')
+on conflict (brand_id, name) do nothing;
+
+-- 7. Insert Mock Locations
+insert into public.locations (name)
+values
+  ('Online Portal'),
+  ('New York Office'),
+  ('London Headquarters'),
+  ('Tokyo Branch')
+on conflict (name) do nothing;
+
 -- 4. Reload PostgREST cache to guarantee database reads reflect references immediately
 notify pgrst, 'reload schema';

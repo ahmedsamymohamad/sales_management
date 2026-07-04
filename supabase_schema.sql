@@ -32,7 +32,7 @@ create table if not exists public.sales (
   unit_price numeric not null check (unit_price >= 0),
   total_amount numeric not null,
   sale_date date default current_date not null,
-  customer_name text not null,
+  customer_name text,
   notes text,
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   approved_by uuid references public.profiles(id) on delete set null,
@@ -51,6 +51,34 @@ create table if not exists public.brands (
 
 -- Disable RLS on Brands for direct client-side operations
 alter table public.brands disable row level security;
+
+-- 4. Create Sub-Products Table
+create table if not exists public.sub_products (
+  id uuid default gen_random_uuid() primary key,
+  brand_id uuid references public.brands(id) on delete cascade not null,
+  name text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique (brand_id, name)
+);
+
+-- Disable RLS on Sub-Products for direct client-side operations
+alter table public.sub_products disable row level security;
+
+-- 5. Create Locations Table
+create table if not exists public.locations (
+  id uuid default gen_random_uuid() primary key,
+  name text not null unique,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Disable RLS on Locations for direct client-side operations
+alter table public.locations disable row level security;
+
+-- 6. Add brand, sub-product and location columns to sales table
+alter table public.sales add column if not exists brand_name text;
+alter table public.sales add column if not exists sub_product_name text;
+alter table public.sales add column if not exists location text;
+alter table public.sales alter column customer_name drop not null;
 
 -- Force Supabase PostgREST API to reload the schema cache immediately
 notify pgrst, 'reload schema';

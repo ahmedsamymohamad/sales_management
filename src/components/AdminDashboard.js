@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
   TrendingUp, DollarSign, Users, CheckSquare, Check, X, 
-  LogOut, PlusCircle, Settings, FileText, Menu, ChevronRight, Award, Edit2 
+  LogOut, PlusCircle, Settings, FileText, Menu, ChevronRight, Award, Edit2,
+  ArrowLeft, Eye
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
@@ -16,6 +17,7 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarActive, setSidebarActive] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   
   // Database States
   const [sales, setSales] = useState([]);
@@ -358,25 +360,25 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
 
         <ul className="sidebar-menu">
           <li className={`menu-item ${activeTab === 'dashboard' ? 'active' : ''}`}>
-            <button onClick={() => { setActiveTab('dashboard'); setSidebarActive(false); }}>
+            <button onClick={() => { setActiveTab('dashboard'); setSidebarActive(false); setSelectedEmployeeId(null); }}>
               <TrendingUp size={18} />
               <span>Dashboard</span>
             </button>
           </li>
           <li className={`menu-item ${activeTab === 'approvals' ? 'active' : ''}`}>
-            <button onClick={() => { setActiveTab('approvals'); setSidebarActive(false); }}>
+            <button onClick={() => { setActiveTab('approvals'); setSidebarActive(false); setSelectedEmployeeId(null); }}>
               <CheckSquare size={18} />
               <span>Approvals ({pendingSales.length})</span>
             </button>
           </li>
           <li className={`menu-item ${activeTab === 'targets' ? 'active' : ''}`}>
-            <button onClick={() => { setActiveTab('targets'); setSidebarActive(false); }}>
+            <button onClick={() => { setActiveTab('targets'); setSidebarActive(false); setSelectedEmployeeId(null); }}>
               <Settings size={18} />
               <span>Targets Editor</span>
             </button>
           </li>
           <li className={`menu-item ${activeTab === 'users' ? 'active' : ''}`}>
-            <button onClick={() => { setActiveTab('users'); setSidebarActive(false); }}>
+            <button onClick={() => { setActiveTab('users'); setSidebarActive(false); setSelectedEmployeeId(null); }}>
               <Users size={18} />
               <span>User Directory</span>
             </button>
@@ -402,6 +404,263 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
             <div className="loader"></div>
             <p>Syncing data with Supabase...</p>
           </div>
+        ) : selectedEmployeeId ? (
+          (() => {
+            const empProfile = profiles.find(p => p.id === selectedEmployeeId);
+            if (!empProfile) {
+              return (
+                <div>
+                  <button className="btn-secondary" onClick={() => setSelectedEmployeeId(null)}>
+                    <ArrowLeft size={16} />
+                    <span>Back to Dashboard</span>
+                  </button>
+                  <p style={{ marginTop: '20px', color: 'var(--text-secondary)' }}>Employee profile not found.</p>
+                </div>
+              );
+            }
+
+            const empSales = sales.filter(s => s.employee_id === selectedEmployeeId);
+            const empApprovedSales = empSales.filter(s => s.status === 'approved');
+            const empPendingSales = empSales.filter(s => s.status === 'pending');
+            const empRejectedSales = empSales.filter(s => s.status === 'rejected');
+
+            const empRevenue = empApprovedSales.reduce((acc, curr) => acc + parseFloat(curr.total_amount || 0), 0);
+            const empTargetPercent = empProfile.monthly_target > 0 ? (empRevenue / empProfile.monthly_target) * 100 : 0;
+
+            return (
+              <div>
+                {/* Back Button */}
+                <div style={{ marginBottom: '24px' }}>
+                  <button 
+                    className="btn-secondary" 
+                    onClick={() => setSelectedEmployeeId(null)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    <ArrowLeft size={16} />
+                    <span>Back to Dashboard</span>
+                  </button>
+                </div>
+
+                {/* Profile Header */}
+                <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div className="user-avatar" style={{ width: '60px', height: '60px', fontSize: '1.5rem' }}>
+                        {empProfile.full_name.charAt(0)}
+                      </div>
+                      <div>
+                        <h2 style={{ fontSize: '1.8rem', margin: 0, color: 'var(--text-primary)' }}>
+                          {empProfile.full_name}
+                        </h2>
+                        <p style={{ color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>{empProfile.email}</p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                      <span className={`badge ${empProfile.role}`} style={{ alignSelf: 'center', padding: '6px 12px' }}>
+                        {empProfile.role}
+                      </span>
+                      <button 
+                        className="btn-secondary"
+                        onClick={() => handleToggleRole(empProfile)}
+                      >
+                        Set as {empProfile.role === 'admin' ? 'Employee' : 'Admin'}
+                      </button>
+                      <button 
+                        className="btn-secondary"
+                        onClick={() => {
+                          setEditingTargetId(empProfile.id);
+                          setEditingTargetValue(empProfile.monthly_target.toString());
+                          setActiveTab('targets');
+                          setSelectedEmployeeId(null);
+                        }}
+                      >
+                        Edit Target
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '20px', paddingTop: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Operator ID</span>
+                      <div style={{ fontWeight: '500', marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>{empProfile.id}</div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Registration Date</span>
+                      <div style={{ fontWeight: '500', marginTop: '4px', fontSize: '0.9rem' }}>
+                        {new Date(empProfile.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Verification Status</span>
+                      <div style={{ fontWeight: '500', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {empProfile.is_verified ? (
+                          <>
+                            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)' }}></span>
+                            <span style={{ color: 'var(--success)', fontSize: '0.9rem', fontWeight: '600' }}>Verified</span>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--warning)' }}></span>
+                            <span style={{ color: 'var(--warning)', fontSize: '0.9rem', fontWeight: '600' }}>Unverified</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KPI Metrics */}
+                <div className="kpi-grid">
+                  <div className="kpi-card glass-panel">
+                    <div className="kpi-icon purple">
+                      <DollarSign size={24} />
+                    </div>
+                    <div className="kpi-details">
+                      <div className="kpi-value">${empRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div className="kpi-label">Approved Revenue</div>
+                    </div>
+                  </div>
+
+                  <div className="kpi-card glass-panel">
+                    <div className="kpi-icon blue">
+                      <FileText size={24} />
+                    </div>
+                    <div className="kpi-details">
+                      <div className="kpi-value">{empApprovedSales.length}</div>
+                      <div className="kpi-label">Sales Logged</div>
+                    </div>
+                  </div>
+
+                  <div className="kpi-card glass-panel">
+                    <div className="kpi-icon green">
+                      <CheckSquare size={24} />
+                    </div>
+                    <div className="kpi-details">
+                      <div className="kpi-value">{empPendingSales.length}</div>
+                      <div className="kpi-label">Pending Approvals</div>
+                    </div>
+                  </div>
+
+                  <div className="kpi-card glass-panel">
+                    <div className="kpi-icon yellow">
+                      <Award size={24} />
+                    </div>
+                    <div className="kpi-details">
+                      <div className="kpi-value">{empRejectedSales.length}</div>
+                      <div className="kpi-label">Rejected Sales</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quota Progress */}
+                {empProfile.role === 'employee' && (
+                  <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
+                    <h3 className="chart-title" style={{ marginBottom: '16px' }}>Monthly Target Quota</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                      <div style={{ flexGrow: 1, minWidth: '250px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Monthly Progress</span>
+                          <span style={{ fontWeight: '600' }}>
+                            ${empRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })} / ${parseFloat(empProfile.monthly_target || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div style={{ height: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
+                          <div 
+                            style={{ 
+                              height: '100%', 
+                              width: `${Math.min(100, empTargetPercent)}%`, 
+                              background: 'linear-gradient(90deg, var(--accent-purple), var(--accent-pink))', 
+                              borderRadius: '6px'
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'center', minWidth: '100px' }}>
+                        <div style={{ fontSize: '2rem', fontWeight: '700', color: empTargetPercent >= 100 ? 'var(--success)' : 'var(--text-primary)' }}>
+                          {Math.round(empTargetPercent)}%
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Target Reached</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sales Log History Table */}
+                <div className="table-card glass-panel">
+                  <div className="table-header">
+                    <h3 className="chart-title">Sales Activity Logs</h3>
+                  </div>
+                  
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Logged Date</th>
+                          <th>Product</th>
+                          <th>Qty</th>
+                          <th>Unit Price</th>
+                          <th>Total Amount</th>
+                          <th>Customer</th>
+                          <th>Notes</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {empSales.map((sale) => (
+                          <tr key={sale.id}>
+                            <td>{sale.sale_date}</td>
+                            <td style={{ fontWeight: '500' }}>{sale.product_name}</td>
+                            <td>{sale.quantity}</td>
+                            <td>${parseFloat(sale.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style={{ fontWeight: '600', color: 'white' }}>
+                              ${parseFloat(sale.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </td>
+                            <td>{sale.customer_name}</td>
+                            <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{sale.notes || '-'}</td>
+                            <td>
+                              <span className={`badge ${sale.status}`}>
+                                {sale.status}
+                              </span>
+                            </td>
+                            <td>
+                              {sale.status === 'pending' ? (
+                                <div className="btn-action-group">
+                                  <button 
+                                    className="btn-action approve"
+                                    onClick={() => handleApprove(sale.id)}
+                                    title="Approve Sale"
+                                  >
+                                    <Check size={18} />
+                                  </button>
+                                  <button 
+                                    className="btn-action reject"
+                                    onClick={() => handleReject(sale.id)}
+                                    title="Reject Sale"
+                                  >
+                                    <X size={18} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Reviewed</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {empSales.length === 0 && (
+                          <tr>
+                            <td colSpan="9" style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
+                              No sales records found for this representative.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
         ) : (
           <>
             {/* Dashboard Tabs Content */}
@@ -505,12 +764,32 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                           <th>Total Sales Value</th>
                           <th>Monthly Target</th>
                           <th>Quota Status</th>
+                          <th>Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {employeePerformance.map((emp) => (
                           <tr key={emp.id}>
-                            <td>{emp.full_name}</td>
+                            <td>
+                              <button 
+                                onClick={() => setSelectedEmployeeId(emp.id)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text-primary)',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  textAlign: 'left',
+                                  fontFamily: 'inherit',
+                                  fontSize: 'inherit'
+                                }}
+                                onMouseEnter={(e) => e.target.style.color = 'var(--accent-purple)'}
+                                onMouseLeave={(e) => e.target.style.color = 'var(--text-primary)'}
+                              >
+                                {emp.full_name}
+                              </button>
+                            </td>
                             <td><span className="badge employee">Employee</span></td>
                             <td>{emp.totalSalesCount}</td>
                             <td style={{ fontWeight: '600', color: 'var(--success)' }}>
@@ -524,6 +803,16 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                                 </div>
                                 <span style={{ fontSize: '0.8rem', fontWeight: '500' }}>{Math.round(emp.targetProgressPercent)}%</span>
                               </div>
+                            </td>
+                            <td>
+                              <button
+                                className="btn-secondary"
+                                style={{ padding: '6px 10px', fontSize: '0.78rem', display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                                onClick={() => setSelectedEmployeeId(emp.id)}
+                              >
+                                <Eye size={12} />
+                                <span>Details</span>
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -729,17 +1018,29 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                                 {new Date(profile.created_at).toLocaleDateString()}
                               </td>
                               <td>
-                                {profile.id !== user.id ? (
-                                  <button
-                                    className="btn-secondary"
-                                    style={{ padding: '6px 10px', fontSize: '0.78rem' }}
-                                    onClick={() => handleToggleRole(profile)}
-                                  >
-                                    Set as {profile.role === 'admin' ? 'Employee' : 'Admin'}
-                                  </button>
-                                ) : (
-                                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Active Admin</span>
-                                )}
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                  {profile.role === 'employee' && (
+                                    <button
+                                      className="btn-secondary"
+                                      style={{ padding: '6px 10px', fontSize: '0.78rem', display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                                      onClick={() => setSelectedEmployeeId(profile.id)}
+                                    >
+                                      <Eye size={12} />
+                                      <span>View Info</span>
+                                    </button>
+                                  )}
+                                  {profile.id !== user.id ? (
+                                    <button
+                                      className="btn-secondary"
+                                      style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+                                      onClick={() => handleToggleRole(profile)}
+                                    >
+                                      Set as {profile.role === 'admin' ? 'Employee' : 'Admin'}
+                                    </button>
+                                  ) : (
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Active Admin</span>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}

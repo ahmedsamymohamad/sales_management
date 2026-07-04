@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { 
   TrendingUp, DollarSign, Users, CheckSquare, Check, X, 
   LogOut, PlusCircle, Settings, FileText, Menu, ChevronRight, Award, Edit2,
-  ArrowLeft, Eye
+  ArrowLeft, Eye, Tag, Trash2
 } from 'lucide-react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
@@ -22,6 +22,9 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   // Database States
   const [sales, setSales] = useState([]);
   const [profiles, setProfiles] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [newBrandName, setNewBrandName] = useState('');
+  const [submittingBrand, setSubmittingBrand] = useState(false);
   
   // Form States
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -57,6 +60,16 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
         .order('sale_date', { ascending: false });
       if (salesErr) throw salesErr;
       setSales(salesData || []);
+
+      // 3. Fetch Brands
+      const { data: brandData, error: brandErr } = await supabase
+        .from('brands')
+        .select('*')
+        .order('name', { ascending: true });
+      if (brandErr && brandErr.code !== 'PGRST116' && !brandErr.message.includes('relation "public.brands" does not exist')) {
+        throw brandErr;
+      }
+      setBrands(brandData || []);
     } catch (err) {
       console.error('Error fetching admin dashboard data:', err);
       showToast('Error loading database tables.', 'danger');
@@ -68,10 +81,13 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
   useEffect(() => {
     fetchData();
     
-    // Set up Real-Time DB Subscriptions for Sales updates
+    // Set up Real-Time DB Subscriptions for Sales and Brands updates
     const salesChannel = supabase
       .channel('admin-sales-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'brands' }, () => {
         fetchData();
       })
       .subscribe();
@@ -210,6 +226,50 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
       showToast(err.message || 'Failed to register account.', 'danger');
     } finally {
       setSubmittingUser(false);
+    }
+  };
+
+  // Handle Add Brand
+  const handleAddBrand = async (e) => {
+    e.preventDefault();
+    if (submittingBrand) return;
+    if (!newBrandName.trim()) {
+      showToast('Brand name cannot be empty.', 'warning');
+      return;
+    }
+    setSubmittingBrand(true);
+    try {
+      const { error } = await supabase
+        .from('brands')
+        .insert([{ name: newBrandName.trim() }]);
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('A brand with this name already exists.');
+        }
+        throw error;
+      }
+      showToast('Brand added successfully.', 'success');
+      setNewBrandName('');
+      fetchData();
+    } catch (err) {
+      showToast(err.message || 'Error adding brand.', 'danger');
+    } finally {
+      setSubmittingBrand(false);
+    }
+  };
+
+  // Handle Delete Brand
+  const handleDeleteBrand = async (brandId) => {
+    try {
+      const { error } = await supabase
+        .from('brands')
+        .delete()
+        .eq('id', brandId);
+      if (error) throw error;
+      showToast('Brand deleted successfully.', 'warning');
+      fetchData();
+    } catch (err) {
+      showToast(err.message || 'Error deleting brand.', 'danger');
     }
   };
 
@@ -381,6 +441,12 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
             <button onClick={() => { setActiveTab('users'); setSidebarActive(false); setSelectedEmployeeId(null); }}>
               <Users size={18} />
               <span>User Directory</span>
+            </button>
+          </li>
+          <li className={`menu-item ${activeTab === 'brands' ? 'active' : ''}`}>
+            <button onClick={() => { setActiveTab('brands'); setSidebarActive(false); setSelectedEmployeeId(null); }}>
+              <Tag size={18} />
+              <span>Brand Manager</span>
             </button>
           </li>
         </ul>
@@ -1152,6 +1218,91 @@ export default function AdminDashboard({ user, onLogout, showToast }) {
                           <>
                             <PlusCircle size={18} />
                             <span>Add Operator</span>
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Brand Manager tab */}
+            {activeTab === 'brands' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '24px', alignItems: 'start' }}>
+                <div>
+                  <h1 className="dashboard-title">Brand Registry</h1>
+                  <p className="dashboard-subtitle">Manage official product brands select-list available for representative logs.</p>
+
+                  <div className="table-card glass-panel">
+                    <div className="table-container">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Brand Name</th>
+                            <th>Registered At</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {brands.map((brand) => (
+                            <tr key={brand.id}>
+                              <td style={{ fontWeight: '500' }}>{brand.name}</td>
+                              <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                {new Date(brand.created_at).toLocaleDateString()}
+                              </td>
+                              <td>
+                                <button
+                                  className="btn-logout"
+                                  style={{ padding: '6px' }}
+                                  onClick={() => handleDeleteBrand(brand.id)}
+                                  title="Delete Brand"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {brands.length === 0 && (
+                            <tr>
+                              <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                                No brands registered yet. Add one on the right.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Add Brand Form Card */}
+                <div>
+                  <h2 className="dashboard-title" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Register New Brand</h2>
+                  <p className="dashboard-subtitle" style={{ marginBottom: '24px' }}>Add a brand to populate the dropdown select-list for logs.</p>
+
+                  <div className="glass-panel" style={{ padding: '24px' }}>
+                    <form onSubmit={handleAddBrand}>
+                      <div className="form-group">
+                        <label htmlFor="newBrandName">Brand Name</label>
+                        <input
+                          id="newBrandName"
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g. AuraCloud SaaS"
+                          value={newBrandName}
+                          onChange={(e) => setNewBrandName(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <button type="submit" className="btn-primary" style={{ marginTop: '10px' }} disabled={submittingBrand}>
+                        {submittingBrand ? (
+                          <span className="loader"></span>
+                        ) : (
+                          <>
+                            <PlusCircle size={18} />
+                            <span>Add Brand</span>
                           </>
                         )}
                       </button>

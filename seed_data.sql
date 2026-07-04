@@ -178,5 +178,13 @@ values
     'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
   );
 
+-- 5. Insert Mock Brands
+insert into public.brands (name)
+values
+  ('AuraCloud SaaS'),
+  ('Backup Storage Premium'),
+  ('Security Audit Retainer')
+on conflict (name) do nothing;
+
 -- 4. Reload PostgREST cache to guarantee database reads reflect references immediately
 notify pgrst, 'reload schema';

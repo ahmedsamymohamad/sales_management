@@ -42,5 +42,15 @@ create table if not exists public.sales (
 -- Disable RLS on Sales for direct client-side operations
 alter table public.sales disable row level security;
 
+-- 3. Create Brands Table
+create table if not exists public.brands (
+  id uuid default gen_random_uuid() primary key,
+  name text not null unique,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Disable RLS on Brands for direct client-side operations
+alter table public.brands disable row level security;
+
 -- Force Supabase PostgREST API to reload the schema cache immediately
 notify pgrst, 'reload schema';

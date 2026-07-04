@@ -14,9 +14,11 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
   const [sales, setSales] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [brands, setBrands] = useState([]);
   
   // Form States
   const [productName, setProductName] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [unitPrice, setUnitPrice] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -53,7 +55,17 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
       if (mySalesErr) throw mySalesErr;
       setSales(mySales || []);
 
-      // 4. Fetch All Approved Sales for Leaderboard calculation
+      // 4. Fetch Brands
+      const { data: brandData, error: brandErr } = await supabase
+        .from('brands')
+        .select('*')
+        .order('name', { ascending: true });
+      if (brandErr && brandErr.code !== 'PGRST116' && !brandErr.message.includes('relation "public.brands" does not exist')) {
+        throw brandErr;
+      }
+      setBrands(brandData || []);
+
+      // 5. Fetch All Approved Sales for Leaderboard calculation
       // (Even though employees can't edit other sales, their RLS policy allows reading approved or their own sales)
       const { data: approvedSales, error: appSalesErr } = await supabase
         .from('sales')
@@ -79,13 +91,16 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
     };
     init();
 
-    // Set up Real-Time DB Subscriptions for Sales updates (e.g. when admin approves)
+    // Set up Real-Time DB Subscriptions for Sales and Brands updates (e.g. when admin approves)
     const salesChannel = supabase
       .channel('employee-sales-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'brands' }, () => {
         fetchData();
       })
       .subscribe();
@@ -135,6 +150,7 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
       
       // Reset form
       setProductName('');
+      setSelectedBrand('');
       setQuantity('1');
       setUnitPrice('');
       setCustomerName('');
@@ -385,17 +401,52 @@ export default function EmployeeDashboard({ user, onLogout, showToast }) {
 
                     <form onSubmit={handleLogSale} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                       <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                        <label htmlFor="productName">Product or Service Name</label>
-                        <input
-                          id="productName"
-                          type="text"
+                        <label htmlFor="selectedBrand">Choose Product Brand</label>
+                        <select
+                          id="selectedBrand"
                           className="form-input"
-                          placeholder="e.g. Enterprise Cloud Package"
-                          value={productName}
-                          onChange={(e) => setProductName(e.target.value)}
+                          style={{
+                            background: 'var(--bg-input)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border-color)',
+                            appearance: 'none',
+                            WebkitAppearance: 'none',
+                            cursor: 'pointer'
+                          }}
+                          value={selectedBrand}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedBrand(val);
+                            if (val !== 'Other') {
+                              setProductName(val);
+                            } else {
+                              setProductName('');
+                            }
+                          }}
                           required
-                        />
+                        >
+                          <option value="" disabled>-- Select a Brand --</option>
+                          {brands.map(b => (
+                            <option key={b.id} value={b.name}>{b.name}</option>
+                          ))}
+                          <option value="Other">Other (Specify Custom...)</option>
+                        </select>
                       </div>
+
+                      {selectedBrand === 'Other' && (
+                        <div className="form-group" style={{ gridColumn: 'span 2', animation: 'fadeIn 0.2s ease-out' }}>
+                          <label htmlFor="productName">Specify Custom Product/Brand Name</label>
+                          <input
+                            id="productName"
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. Custom Database Optimisation"
+                            value={productName}
+                            onChange={(e) => setProductName(e.target.value)}
+                            required
+                          />
+                        </div>
+                      )}
 
                       <div className="form-group">
                         <label htmlFor="quantity">Quantity</label>
